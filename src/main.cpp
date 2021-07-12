@@ -62,13 +62,8 @@ struct FanState {
 } fan_state;
 
 /** --------------------------------------- Internal --------------------------------------- */
-static const unsigned long FETCH_TIME = 5000UL;
-unsigned long last_fetch_time         = 0UL;
-unsigned long millis_counter          = 0UL;
-
-inline void onFetch();
-inline void handleTemperatureSensor();
-inline void handleLDR();
+inline void updateTemperatureSensor();
+inline void updateLDR();
 inline void handleFanController();
 inline void handleLCDController();
 
@@ -86,8 +81,27 @@ void setup() {
     thing["temperature_value"] >> [](pson &out) -> void {
         out = temperature_state.temperature_c;
     };
-    thing["ldr_resistance_value"] >> [](pson &out) -> void {
+
+    thing["ldr_value"] >> [](pson &out) -> void {
         out = ldr_state.resistance;
+    };
+
+    thing["fan_state"] << [](pson &in) -> void {
+        fan_state.active              = (bool) in["active"];
+        fan_state.static_mode         = (bool) in["static_mode"];
+        fan_state.controlled_temp_max = (int8_t) in["controlled_temp_max"];
+        fan_state.controlled_temp_min = (int8_t) in["controlled_temp_min"];
+
+        fan_controller.setFanActive(fan_state.active);
+        fan_controller.setStaticMode(fan_state.static_mode);
+        fan_controller.setMaxTemperature(fan_state.controlled_temp_max);
+        fan_controller.setMinTemperature(fan_state.controlled_temp_min);
+    };
+
+    thing["lcd_state"] << [](pson &in) -> void {
+        lcd_state.backlight = (bool) in["backlight"];
+
+        lcd_controller.setBlacklightOn(lcd_state.backlight);
     };
 }
 
@@ -96,59 +110,28 @@ void loop() {
     OTAHandler.handle();
     thing.handle();
 
-    /** Update millis counter */
-    millis_counter = millis();
-
     /** Sensors, actuators, display */
-    handleTemperatureSensor();
-    handleLDR();
-    // handleFanController();
-    // handleLCDController();
-
-    /** Timings */
-    if (millis_counter - last_fetch_time > FETCH_TIME) {
-        onFetch();
-
-        last_fetch_time = millis_counter;
-    }
+    updateTemperatureSensor();
+    updateLDR();
+    handleFanController();
+    handleLCDController();
 }
 
-inline void onFetch() {
-    // lcd
-    pson lcd_props;
-    thing.get_property("lcd_state", lcd_props);
-    lcd_state.backlight = lcd_props["backlight"];
-
-    // fan
-    pson fan_props;
-    thing.get_property("fan_state", fan_props);
-    fan_state.active              = fan_props["active"];
-    fan_state.static_mode         = fan_props["static_mode"];
-    fan_state.controlled_temp_max = fan_props["controlled_temp_max"];
-    fan_state.controlled_temp_min = fan_props["controlled_temp_min"];
-}
-
-inline void handleTemperatureSensor() {
+inline void updateTemperatureSensor() {
     sensor_temperature.requestTemperaturesByIndex(0);
     temperature_state.temperature_c = sensor_temperature.getTempCByIndex(0);
 }
 
-inline void handleLDR() {
+inline void updateLDR() {
     ldr_state.resistance = analogRead(PIN_LDR);
 }
 
 inline void handleFanController() {
-    fan_controller.setFanActive(fan_state.active);
-    fan_controller.setStaticMode(fan_state.static_mode);
-    fan_controller.setMaxTemperature(fan_state.controlled_temp_max);
-    fan_controller.setMinTemperature(fan_state.controlled_temp_min);
-
     fan_state.speed = fan_controller.getFanSpeed(temperature_state.temperature_c);
     analogWrite(PIN_FAN_INA, fan_state.speed);
     analogWrite(PIN_FAN_INB, 0);
 }
 
 inline void handleLCDController() {
-    lcd_controller.setBlacklightOn(lcd_state.backlight);
     lcd_controller.update(temperature_state.temperature_c, fan_controller.getFanSpeedIndicator());
 }
