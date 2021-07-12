@@ -26,6 +26,7 @@
 #endif
 
 /** ----------------------------------------- Pins ----------------------------------------- */
+static const uint8_t PIN_LDR         = A0;
 static const uint8_t PIN_TEMPERATURE = D7;
 static const uint8_t PIN_FAN_INA     = D5;
 static const uint8_t PIN_FAN_INB     = D6;
@@ -42,6 +43,11 @@ struct TemperatureSensorState {
     float temperature_c = 0.0F;
 } temperature_state;
 
+struct LDRState {
+    /** 1023 == brightest, 0 == darkest */
+    uint16_t resistance = 0U;
+} ldr_state;
+
 struct LCDState {
     bool backlight = false;
 } lcd_state;
@@ -49,10 +55,10 @@ struct LCDState {
 struct FanState {
     uint16_t speed = FanController::FanSpeed::FAN_OFF;
 
-    bool active                 = false;
-    bool static_mode            = false;
-    int8_t controlled_temp_max  = 100;
-    int8_t controlled_temp_min  = 0;
+    bool active                = false;
+    bool static_mode           = false;
+    int8_t controlled_temp_max = 100;
+    int8_t controlled_temp_min = 0;
 } fan_state;
 
 /** --------------------------------------- Internal --------------------------------------- */
@@ -62,6 +68,7 @@ unsigned long millis_counter          = 0UL;
 
 inline void onFetch();
 inline void handleTemperatureSensor();
+inline void handleLDR();
 inline void handleFanController();
 inline void handleLCDController();
 
@@ -79,6 +86,9 @@ void setup() {
     thing["temperature_value"] >> [](pson &out) -> void {
         out = temperature_state.temperature_c;
     };
+    thing["ldr_resistance_value"] >> [](pson &out) -> void {
+        out = ldr_state.resistance;
+    };
 }
 
 void loop() {
@@ -91,8 +101,9 @@ void loop() {
 
     /** Sensors, actuators, display */
     handleTemperatureSensor();
-    handleFanController();
-    handleLCDController();
+    handleLDR();
+    // handleFanController();
+    // handleLCDController();
 
     /** Timings */
     if (millis_counter - last_fetch_time > FETCH_TIME) {
@@ -120,6 +131,10 @@ inline void onFetch() {
 inline void handleTemperatureSensor() {
     sensor_temperature.requestTemperaturesByIndex(0);
     temperature_state.temperature_c = sensor_temperature.getTempCByIndex(0);
+}
+
+inline void handleLDR() {
+    ldr_state.resistance = analogRead(PIN_LDR);
 }
 
 inline void handleFanController() {
