@@ -15,21 +15,18 @@ FanController::FanController()
     , _is_initialized(false)
     , _is_static_mode(false)
     , _is_fan_active(false)
-    , _min_temperature(0)
-    , _max_temperature(0)
-    , _range_temperature(0) {
+    , _desired_temperature(0)
+    , _desired_temperature_threshold(5) {
 }
 
-void FanController::begin(int8_t min_temp_c, int8_t max_temp_c) {
+void FanController::begin(int8_t desired_temp_c, int8_t desired_temp_threshold_c = 5) {
     if (_is_initialized) {
         return;
     }
 
-    setMinTemperature(min_generic(min_temp_c, max_temp_c));
-    setMaxTemperature(max_generic(min_temp_c, max_temp_c));
-    updateTemperatureRange(0);
+    setDesiredtemperature(desired_temp_c);
+    setDesiredTemperatureThreshold(desired_temp_threshold_c);
 
-    _is_static_mode = _min_temperature == _max_temperature;
     _is_initialized = true;
 }
 
@@ -43,48 +40,6 @@ uint16_t FanController::getFanSpeed(float temperature) {
     }
 
     return _latest_fan_speed;
-}
-
-uint16_t FanController::measureFanSpeed(int8_t temperature) {
-    uint16_t diff          = abs(_max_temperature) - abs(_min_temperature);
-    float range_precentage = _range_temperature / 100.0F;
-    float buffer           = diff * range_precentage;
-    uint16_t l_length      = _min_temperature + buffer;
-    uint16_t h_length      = _max_temperature - buffer;
-
-    if (temperature < _min_temperature) {
-        return FanSpeed::FAN_OFF;
-    } else if (temperature >= _min_temperature && temperature <= l_length) {
-        return FanSpeed::FAN_LOW;
-    } else if (temperature > l_length && temperature < h_length) {
-        return FanSpeed::FAN_NORMAL;
-    } else {
-        return FanSpeed::FAN_HIGH;
-    }
-}
-
-int8_t FanController::getMinTemperature() {
-    return _min_temperature;
-}
-
-int8_t FanController::getMaxTemperature() {
-    return _max_temperature;
-}
-
-uint8_t FanController::getTemperatureRangePrecentage() {
-    return _range_temperature;
-}
-
-void FanController::setMinTemperature(int8_t min_temp_c) {
-    _min_temperature = min_temp_c;
-}
-
-void FanController::setMaxTemperature(int8_t max_temp_c) {
-    _max_temperature = max_temp_c;
-}
-
-void FanController::updateTemperatureRange(uint8_t range_value) {
-    _range_temperature = range_value > 20 ? 45 : (range_value + 25);
 }
 
 bool FanController::isFanActive() {
@@ -107,6 +62,22 @@ void FanController::setStaticMode(bool static_mode) {
     _is_static_mode = static_mode;
 }
 
+int8_t FanController::getDesiredTemperature() {
+    return _desired_temperature;
+}
+
+void FanController::setDesiredtemperature(int8_t desired_temp_c) {
+    _desired_temperature = desired_temp_c;
+}
+
+int8_t FanController::getDesiredTemperatureThreshold() {
+    return _desired_temperature_threshold;
+}
+
+void FanController::setDesiredTemperatureThreshold(int8_t desired_temp_threshold_c) {
+    _desired_temperature_threshold = desired_temp_threshold_c;
+}
+
 uint8_t FanController::getFanSpeedIndicator() {
     switch (_latest_fan_speed) {
         case FanSpeed::FAN_LOW:
@@ -117,5 +88,20 @@ uint8_t FanController::getFanSpeedIndicator() {
             return 2;
         default:
             return 3;
+    }
+}
+
+uint16_t FanController::measureFanSpeed(int8_t temperature) {
+    int16_t lower_threshold = temperature - _desired_temperature_threshold;
+    int16_t upper_threshold = temperature + _desired_temperature_threshold;
+
+    if (temperature < lower_threshold) {
+        return FanSpeed::FAN_OFF;
+    } else if (temperature > upper_threshold) {
+        return FanSpeed::FAN_HIGH;
+    } else if (temperature < _desired_temperature && temperature > lower_threshold) {
+        return FanSpeed::FAN_LOW;
+    } else {
+        return FanSpeed::FAN_NORMAL;
     }
 }
