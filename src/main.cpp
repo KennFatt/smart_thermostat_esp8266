@@ -55,10 +55,10 @@ struct LCDState {
 struct FanState {
     uint16_t speed = FanController::FanSpeed::FAN_OFF;
 
-    bool active                = false;
-    bool static_mode           = false;
-    int8_t controlled_temp_max = 100;
-    int8_t controlled_temp_min = 0;
+    bool active                     = false;
+    bool static_mode                = false;
+    int8_t desired_temp_c           = 28;
+    int8_t desired_temp_threshold_c = 5;
 } fan_state;
 
 /** --------------------------------------- Internal --------------------------------------- */
@@ -79,7 +79,7 @@ void setup() {
     /** Initialize sensors and pins */
     sensor_temperature.begin();
     lcd_controller.begin();
-    fan_controller.begin(fan_state.controlled_temp_min, fan_state.controlled_temp_max);
+    fan_controller.begin(fan_state.desired_temp_c, fan_state.desired_temp_threshold_c);
 
     /** Expose public states to cloud */
     thing["sensor_values"] >> [](pson &out) -> void {
@@ -115,15 +115,15 @@ void loop() {
 void synchronizeFanProperties() {
     pson fan_props;
     thing.get_property("fan_state", fan_props);
-    fan_state.active              = (bool) fan_props["active"];
-    fan_state.static_mode         = (bool) fan_props["static_mode"];
-    fan_state.controlled_temp_max = (int8_t) fan_props["controlled_temp_max"];
-    fan_state.controlled_temp_min = (int8_t) fan_props["controlled_temp_min"];
+    fan_state.active         = (bool) fan_props["motor_active"];
+    fan_state.static_mode    = (bool) fan_props["motor_static_mode"];
+    fan_state.desired_temp_c = (int8_t) fan_props["desired_temperature"];
+    fan_state.desired_temp_c = (int8_t) fan_props["desired_temperature_threshold"];
 
     fan_controller.setFanActive(fan_state.active);
     fan_controller.setStaticMode(fan_state.static_mode);
-    fan_controller.setMaxTemperature(fan_state.controlled_temp_max);
-    fan_controller.setMinTemperature(fan_state.controlled_temp_min);
+    fan_controller.setDesiredtemperature(fan_state.desired_temp_c);
+    fan_controller.setDesiredTemperatureThreshold(fan_state.desired_temp_threshold_c);
 }
 
 void synchronizeLCDProperties() {
