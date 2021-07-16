@@ -82,16 +82,15 @@ void setup() {
     fan_controller.begin(fan_state.controlled_temp_min, fan_state.controlled_temp_max);
 
     /** Expose public states to cloud */
-    thing["temperature_value"] >> [](pson &out) -> void {
-        out = temperature_state.temperature_c;
+    thing["sensor_values"] >> [](pson &out) -> void {
+        out["temperature_c"]  = temperature_state.temperature_c;
+        out["ldr_resistance"] = ldr_state.resistance;
     };
 
-    thing["ldr_value"] >> [](pson &out) -> void {
-        out = ldr_state.resistance;
+    thing["sync"] = []() -> void {
+        synchronizeFanProperties();
+        synchronizeLCDProperties();
     };
-
-    thing["sync_fan"] = synchronizeFanProperties;
-    thing["sync_lcd"] = synchronizeLCDProperties;
 }
 
 void loop() {
