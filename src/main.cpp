@@ -62,6 +62,7 @@ struct FanState {
 } fan_state;
 
 /** --------------------------------------- Internal --------------------------------------- */
+static bool initSynchronize = false;
 void synchronizeFanProperties();
 void synchronizeLCDProperties();
 
@@ -71,17 +72,14 @@ inline void handleFanController();
 inline void handleLCDController();
 
 void setup() {
-    /** Initialize sensors and pins */
-    sensor_temperature.begin();
-    lcd_controller.begin();
-    fan_controller.begin(0, 100);
-
     /** Setup connections */
     thing.add_wifi(SSID_NAME, SSID_PSK);
     OTAHandler.begin(false);
 
-    synchronizeFanProperties();
-    synchronizeLCDProperties();
+    /** Initialize sensors and pins */
+    sensor_temperature.begin();
+    lcd_controller.begin();
+    fan_controller.begin(fan_state.controlled_temp_min, fan_state.controlled_temp_max);
 
     /** Expose public states to cloud */
     thing["temperature_value"] >> [](pson &out) -> void {
@@ -106,6 +104,13 @@ void loop() {
     updateLDR();
     handleFanController();
     handleLCDController();
+
+    if (!initSynchronize) {
+        synchronizeFanProperties();
+        synchronizeLCDProperties();
+
+        initSynchronize = true;
+    }
 }
 
 void synchronizeFanProperties() {
@@ -115,12 +120,20 @@ void synchronizeFanProperties() {
     fan_state.static_mode         = (bool) fan_props["static_mode"];
     fan_state.controlled_temp_max = (int8_t) fan_props["controlled_temp_max"];
     fan_state.controlled_temp_min = (int8_t) fan_props["controlled_temp_min"];
+
+    fan_controller.setFanActive(fan_state.active);
+    fan_controller.setStaticMode(fan_state.static_mode);
+    fan_controller.setMaxTemperature(fan_state.controlled_temp_max);
+    fan_controller.setMinTemperature(fan_state.controlled_temp_min);
 }
 
 void synchronizeLCDProperties() {
     pson lcd_props;
     thing.get_property("lcd_state", lcd_props);
     lcd_state.backlight = (bool) lcd_props["backlight"];
+
+    lcd_controller.setBlacklightOn(lcd_state.backlight);
+    lcd_controller.update(temperature_state.temperature_c, fan_controller.getFanSpeedIndicator());
 }
 
 inline void updateTemperatureSensor() {
