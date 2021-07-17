@@ -115,14 +115,14 @@ void loop() {
 void synchronizeFanProperties() {
     pson fan_props;
     thing.get_property("fan_state", fan_props);
-    fan_state.active         = (bool) fan_props["motor_active"];
-    fan_state.static_mode    = (bool) fan_props["motor_static_mode"];
-    fan_state.desired_temp_c = (int8_t) fan_props["desired_temperature"];
-    fan_state.desired_temp_c = (int8_t) fan_props["desired_temperature_threshold"];
+    fan_state.active                   = (bool) fan_props["motor_active"];
+    fan_state.static_mode              = (bool) fan_props["motor_static_mode"];
+    fan_state.desired_temp_c           = (int8_t) fan_props["desired_temperature"];
+    fan_state.desired_temp_threshold_c = (int8_t) fan_props["desired_temperature_threshold"];
 
     fan_controller.setFanActive(fan_state.active);
     fan_controller.setStaticMode(fan_state.static_mode);
-    fan_controller.setDesiredtemperature(fan_state.desired_temp_c);
+    fan_controller.setDesiredTemperature(fan_state.desired_temp_c);
     fan_controller.setDesiredTemperatureThreshold(fan_state.desired_temp_threshold_c);
 }
 
