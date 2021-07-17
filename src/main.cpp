@@ -27,6 +27,7 @@
 
 /** ----------------------------------------- Pins ----------------------------------------- */
 static const uint8_t PIN_LDR         = A0;
+static const uint8_t PIN_PIR         = D0;
 static const uint8_t PIN_TEMPERATURE = D7;
 static const uint8_t PIN_FAN_INA     = D5;
 static const uint8_t PIN_FAN_INB     = D6;
@@ -48,6 +49,10 @@ struct LDRState {
     uint16_t resistance = 0U;
 } ldr_state;
 
+struct PIRState {
+    bool has_living_object = false;
+} pir_state;
+
 struct LCDState {
     bool backlight = false;
 } lcd_state;
@@ -68,6 +73,7 @@ void synchronizeLCDProperties();
 
 inline void updateTemperatureSensor();
 inline void updateLDR();
+inline void updatePIR();
 inline void handleFanController();
 inline void handleLCDController();
 
@@ -78,6 +84,11 @@ void setup() {
 
     /** Initialize sensors and pins */
     sensor_temperature.begin();
+
+    /** Part of PIR system */
+    pinMode(PIN_PIR, INPUT);
+    pinMode(BUILTIN_LED, OUTPUT);
+
     lcd_controller.begin();
     fan_controller.begin(fan_state.desired_temp_c, fan_state.desired_temp_threshold_c);
 
@@ -85,6 +96,10 @@ void setup() {
     thing["sensor_values"] >> [](pson &out) -> void {
         out["temperature_c"]  = temperature_state.temperature_c;
         out["ldr_resistance"] = ldr_state.resistance;
+    };
+
+    thing["pir_sensor_value"] >> [](pson &out) -> void {
+        out["has_living_object"] = pir_state.has_living_object;
     };
 
     thing["sync"] = []() -> void {
@@ -101,6 +116,7 @@ void loop() {
     /** Sensors, actuators, display */
     updateTemperatureSensor();
     updateLDR();
+    updatePIR();
     handleFanController();
     handleLCDController();
 
@@ -142,6 +158,17 @@ inline void updateTemperatureSensor() {
 
 inline void updateLDR() {
     ldr_state.resistance = analogRead(PIN_LDR);
+}
+
+inline void updatePIR() {
+    pir_state.has_living_object = digitalRead(PIN_PIR) == LOW;
+
+    if (pir_state.has_living_object) {
+        digitalWrite(BUILTIN_LED, HIGH);
+        thing.write_bucket("smart_thermostat_pir", "pir_sensor_value");
+    } else {
+        digitalWrite(BUILTIN_LED, LOW);
+    }
 }
 
 inline void handleFanController() {
