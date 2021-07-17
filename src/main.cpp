@@ -46,7 +46,10 @@ struct TemperatureSensorState {
 
 struct LDRState {
     /** 1023 == brightest, 0 == darkest */
-    uint16_t resistance = 0U;
+    uint16_t resistance        = 0;
+    uint16_t resistance_mapped = 0;
+
+    uint8_t precentage = 0;
 } ldr_state;
 
 struct PIRState {
@@ -65,10 +68,12 @@ struct LCDState {
 struct FanState {
     uint16_t speed = FanController::FanSpeed::FAN_OFF;
 
-    bool active                     = false;
-    bool static_mode                = false;
-    int8_t desired_temp_c           = 28;
-    int8_t desired_temp_threshold_c = 5;
+    bool motor_active                       = false;
+    bool motor_static_mode                  = false;
+    bool motor_off_brightness               = false;
+    uint8_t motor_off_brightness_precentage = 25;
+    int8_t desired_temp_c                   = 28;
+    int8_t desired_temp_threshold_c         = 5;
 } fan_state;
 
 /** --------------------------------------- Internal --------------------------------------- */
@@ -101,6 +106,7 @@ void setup() {
     thing["sensor_values"] >> [](pson &out) -> void {
         out["temperature_c"]  = temperature_state.temperature_c;
         out["ldr_resistance"] = ldr_state.resistance;
+        out["ldr_precentage"] = ldr_state.precentage;
     };
 
     thing["pir_sensor_value"] >> [](pson &out) -> void {
@@ -136,13 +142,15 @@ void loop() {
 void synchronizeFanProperties() {
     pson fan_props;
     thing.get_property("fan_state", fan_props);
-    fan_state.active                   = (bool) fan_props["motor_active"];
-    fan_state.static_mode              = (bool) fan_props["motor_static_mode"];
-    fan_state.desired_temp_c           = (int8_t) fan_props["desired_temperature"];
-    fan_state.desired_temp_threshold_c = (int8_t) fan_props["desired_temperature_threshold"];
+    fan_state.motor_active                    = (bool) fan_props["motor_active"];
+    fan_state.motor_static_mode               = (bool) fan_props["motor_static_mode"];
+    fan_state.motor_off_brightness            = (bool) fan_props["motor_off_brightness"];
+    fan_state.motor_off_brightness_precentage = (uint8_t) fan_props["motor_off_brightness_precentage"];
+    fan_state.desired_temp_c                  = (int8_t) fan_props["desired_temperature"];
+    fan_state.desired_temp_threshold_c        = (int8_t) fan_props["desired_temperature_threshold"];
 
-    fan_controller.setFanActive(fan_state.active);
-    fan_controller.setStaticMode(fan_state.static_mode);
+    fan_controller.setFanActive(fan_state.motor_active);
+    fan_controller.setStaticMode(fan_state.motor_static_mode);
     fan_controller.setDesiredTemperature(fan_state.desired_temp_c);
     fan_controller.setDesiredTemperatureThreshold(fan_state.desired_temp_threshold_c);
 }
@@ -162,7 +170,9 @@ inline void updateTemperatureSensor() {
 }
 
 inline void updateLDR() {
-    ldr_state.resistance = analogRead(PIN_LDR);
+    ldr_state.resistance        = analogRead(PIN_LDR);
+    ldr_state.resistance_mapped = max<uint16_t>(0, min<uint16_t>(ldr_state.resistance, 1000));
+    ldr_state.precentage        = static_cast<uint8_t>(ldr_state.resistance_mapped / 10);
 }
 
 inline void updatePIR() {
@@ -184,6 +194,11 @@ inline void updatePIR() {
 }
 
 inline void handleFanController() {
+    if (fan_state.motor_off_brightness) {
+        fan_state.motor_active = ldr_state.precentage <= fan_state.motor_off_brightness_precentage ? false : true;
+        fan_controller.setFanActive(fan_state.motor_active);
+    }
+
     fan_state.speed = fan_controller.getFanSpeed(temperature_state.temperature_c);
     analogWrite(PIN_FAN_INA, fan_state.speed);
     analogWrite(PIN_FAN_INB, 0);
