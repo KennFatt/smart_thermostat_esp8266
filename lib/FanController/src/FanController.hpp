@@ -102,7 +102,7 @@ class FanController {
     void setStaticMode(bool static_mode);
 
     int8_t getDesiredTemperature();
-    void setDesiredtemperature(int8_t desired_temp_c);
+    void setDesiredTemperature(int8_t desired_temp_c);
     int8_t getDesiredTemperatureThreshold();
     void setDesiredTemperatureThreshold(int8_t desired_temp_threshold_c = 5);
 
@@ -114,7 +114,7 @@ class FanController {
      *
      * @return uint16_t
      */
-    uint16_t measureFanSpeed(int8_t temperature);
+    uint16_t measureFanSpeed(float temperature);
 };
 
 #endif    // KF_FANCONTROLLER_HPP

@@ -24,7 +24,7 @@ void FanController::begin(int8_t desired_temp_c, int8_t desired_temp_threshold_c
         return;
     }
 
-    setDesiredtemperature(desired_temp_c);
+    setDesiredTemperature(desired_temp_c);
     setDesiredTemperatureThreshold(desired_temp_threshold_c);
 
     _is_initialized = true;
@@ -36,7 +36,7 @@ uint16_t FanController::getFanSpeed(float temperature) {
     } else if (_is_static_mode) {
         _latest_fan_speed = FanSpeed::FAN_NORMAL;
     } else {
-        _latest_fan_speed = measureFanSpeed(static_cast<int8_t>(temperature));
+        _latest_fan_speed = measureFanSpeed(temperature);
     }
 
     return _latest_fan_speed;
@@ -66,7 +66,7 @@ int8_t FanController::getDesiredTemperature() {
     return _desired_temperature;
 }
 
-void FanController::setDesiredtemperature(int8_t desired_temp_c) {
+void FanController::setDesiredTemperature(int8_t desired_temp_c) {
     _desired_temperature = desired_temp_c;
 }
 
@@ -91,9 +91,9 @@ uint8_t FanController::getFanSpeedIndicator() {
     }
 }
 
-uint16_t FanController::measureFanSpeed(int8_t temperature) {
-    int16_t lower_threshold = temperature - _desired_temperature_threshold;
-    int16_t upper_threshold = temperature + _desired_temperature_threshold;
+uint16_t FanController::measureFanSpeed(float temperature) {
+    float lower_threshold = _desired_temperature - _desired_temperature_threshold;
+    float upper_threshold = _desired_temperature + _desired_temperature_threshold;
 
     if (temperature < lower_threshold) {
         return FanSpeed::FAN_OFF;
