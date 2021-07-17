@@ -51,6 +51,11 @@ struct LDRState {
 
 struct PIRState {
     bool has_living_object = false;
+
+    /** Trigger thing.write_bucket for every 5s if `has_living_object` == true */
+    const unsigned long UPDATE_INTERVAL = 5000UL;
+    unsigned long update_last_ts        = 0UL;
+    unsigned long update_curr_ts        = 0UL;
 } pir_state;
 
 struct LCDState {
@@ -161,11 +166,18 @@ inline void updateLDR() {
 }
 
 inline void updatePIR() {
-    pir_state.has_living_object = digitalRead(PIN_PIR) == LOW;
+    pir_state.has_living_object = digitalRead(PIN_PIR) == HIGH;
+
+    pir_state.update_curr_ts = millis();
+    bool allow_to_update     = pir_state.update_curr_ts - pir_state.update_last_ts > pir_state.UPDATE_INTERVAL;
 
     if (pir_state.has_living_object) {
         digitalWrite(BUILTIN_LED, HIGH);
-        thing.write_bucket("smart_thermostat_pir", "pir_sensor_value");
+
+        if (allow_to_update) {
+            pir_state.update_last_ts = pir_state.update_curr_ts;
+            thing.write_bucket("smart_thermostat_pir", "pir_sensor_value");
+        }
     } else {
         digitalWrite(BUILTIN_LED, LOW);
     }
