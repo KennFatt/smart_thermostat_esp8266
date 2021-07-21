@@ -26,6 +26,8 @@
 #endif
 
 /** ----------------------------------------- Pins ----------------------------------------- */
+static const uint8_t PIN_LDR         = A0;
+static const uint8_t PIN_PIR         = D0;
 static const uint8_t PIN_TEMPERATURE = D7;
 static const uint8_t PIN_FAN_INA     = D5;
 static const uint8_t PIN_FAN_INB     = D6;
@@ -42,6 +44,23 @@ struct TemperatureSensorState {
     float temperature_c = 0.0F;
 } temperature_state;
 
+struct LDRState {
+    /** 1023 == brightest, 0 == darkest */
+    uint16_t resistance        = 0;
+    uint16_t resistance_mapped = 0;
+
+    uint8_t precentage = 0;
+} ldr_state;
+
+struct PIRState {
+    bool has_living_object = false;
+
+    /** Trigger thing.write_bucket for every 5s if `has_living_object` == true */
+    const unsigned long UPDATE_INTERVAL = 5000UL;
+    unsigned long update_last_ts        = 0UL;
+    unsigned long update_curr_ts        = 0UL;
+} pir_state;
+
 struct LCDState {
     bool backlight = false;
 } lcd_state;
@@ -49,35 +68,54 @@ struct LCDState {
 struct FanState {
     uint16_t speed = FanController::FanSpeed::FAN_OFF;
 
-    bool active                 = false;
-    bool static_mode            = false;
-    int8_t controlled_temp_max  = 100;
-    int8_t controlled_temp_min  = 0;
+    bool motor_active                       = false;
+    bool motor_static_mode                  = false;
+    bool motor_off_brightness               = false;
+    uint8_t motor_off_brightness_precentage = 25;
+    int8_t desired_temp_c                   = 28;
+    int8_t desired_temp_threshold_c         = 5;
 } fan_state;
 
 /** --------------------------------------- Internal --------------------------------------- */
-static const unsigned long FETCH_TIME = 5000UL;
-unsigned long last_fetch_time         = 0UL;
-unsigned long millis_counter          = 0UL;
+static bool initSynchronize = false;
+void synchronizeFanProperties();
+void synchronizeLCDProperties();
 
-inline void onFetch();
-inline void handleTemperatureSensor();
+inline void updateTemperatureSensor();
+inline void updateLDR();
+inline void updatePIR();
 inline void handleFanController();
 inline void handleLCDController();
 
 void setup() {
-    /** Initialize sensors and pins */
-    sensor_temperature.begin();
-    lcd_controller.begin();
-    fan_controller.begin(0, 100);
-
     /** Setup connections */
     thing.add_wifi(SSID_NAME, SSID_PSK);
     OTAHandler.begin(false);
 
+    /** Initialize sensors and pins */
+    sensor_temperature.begin();
+
+    /** Part of PIR system */
+    pinMode(PIN_PIR, INPUT);
+    pinMode(BUILTIN_LED, OUTPUT);
+
+    lcd_controller.begin();
+    fan_controller.begin(fan_state.desired_temp_c, fan_state.desired_temp_threshold_c);
+
     /** Expose public states to cloud */
-    thing["temperature_value"] >> [](pson &out) -> void {
-        out = temperature_state.temperature_c;
+    thing["sensor_values"] >> [](pson &out) -> void {
+        out["temperature_c"]  = temperature_state.temperature_c;
+        out["ldr_resistance"] = ldr_state.resistance;
+        out["ldr_precentage"] = ldr_state.precentage;
+    };
+
+    thing["pir_sensor_value"] >> [](pson &out) -> void {
+        out["has_living_object"] = pir_state.has_living_object;
+    };
+
+    thing["sync"] = []() -> void {
+        synchronizeFanProperties();
+        synchronizeLCDProperties();
     };
 }
 
@@ -86,47 +124,80 @@ void loop() {
     OTAHandler.handle();
     thing.handle();
 
-    /** Update millis counter */
-    millis_counter = millis();
-
     /** Sensors, actuators, display */
-    handleTemperatureSensor();
+    updateTemperatureSensor();
+    updateLDR();
+    updatePIR();
     handleFanController();
     handleLCDController();
 
-    /** Timings */
-    if (millis_counter - last_fetch_time > FETCH_TIME) {
-        onFetch();
+    if (!initSynchronize) {
+        synchronizeFanProperties();
+        synchronizeLCDProperties();
 
-        last_fetch_time = millis_counter;
+        initSynchronize = true;
     }
 }
 
-inline void onFetch() {
-    // lcd
-    pson lcd_props;
-    thing.get_property("lcd_state", lcd_props);
-    lcd_state.backlight = lcd_props["backlight"];
-
-    // fan
+void synchronizeFanProperties() {
     pson fan_props;
     thing.get_property("fan_state", fan_props);
-    fan_state.active              = fan_props["active"];
-    fan_state.static_mode         = fan_props["static_mode"];
-    fan_state.controlled_temp_max = fan_props["controlled_temp_max"];
-    fan_state.controlled_temp_min = fan_props["controlled_temp_min"];
+    fan_state.motor_active                    = (bool) fan_props["motor_active"];
+    fan_state.motor_static_mode               = (bool) fan_props["motor_static_mode"];
+    fan_state.motor_off_brightness            = (bool) fan_props["motor_off_brightness"];
+    fan_state.motor_off_brightness_precentage = (uint8_t) fan_props["motor_off_brightness_precentage"];
+    fan_state.desired_temp_c                  = (int8_t) fan_props["desired_temperature"];
+    fan_state.desired_temp_threshold_c        = (int8_t) fan_props["desired_temperature_threshold"];
+
+    fan_controller.setFanActive(fan_state.motor_active);
+    fan_controller.setStaticMode(fan_state.motor_static_mode);
+    fan_controller.setDesiredTemperature(fan_state.desired_temp_c);
+    fan_controller.setDesiredTemperatureThreshold(fan_state.desired_temp_threshold_c);
 }
 
-inline void handleTemperatureSensor() {
+void synchronizeLCDProperties() {
+    pson lcd_props;
+    thing.get_property("lcd_state", lcd_props);
+    lcd_state.backlight = (bool) lcd_props["backlight"];
+
+    lcd_controller.setBlacklightOn(lcd_state.backlight);
+    lcd_controller.update(temperature_state.temperature_c, fan_controller.getFanSpeedIndicator());
+}
+
+inline void updateTemperatureSensor() {
     sensor_temperature.requestTemperaturesByIndex(0);
     temperature_state.temperature_c = sensor_temperature.getTempCByIndex(0);
 }
 
+inline void updateLDR() {
+    ldr_state.resistance        = analogRead(PIN_LDR);
+    ldr_state.resistance_mapped = max<uint16_t>(0, min<uint16_t>(ldr_state.resistance, 1000));
+    ldr_state.precentage        = static_cast<uint8_t>(ldr_state.resistance_mapped / 10);
+}
+
+inline void updatePIR() {
+    pir_state.has_living_object = digitalRead(PIN_PIR) == HIGH;
+
+    pir_state.update_curr_ts = millis();
+    bool allow_to_update     = pir_state.update_curr_ts - pir_state.update_last_ts > pir_state.UPDATE_INTERVAL;
+
+    if (pir_state.has_living_object) {
+        digitalWrite(BUILTIN_LED, HIGH);
+
+        if (allow_to_update) {
+            pir_state.update_last_ts = pir_state.update_curr_ts;
+            thing.write_bucket("smart_thermostat_pir", "pir_sensor_value");
+        }
+    } else {
+        digitalWrite(BUILTIN_LED, LOW);
+    }
+}
+
 inline void handleFanController() {
-    fan_controller.setFanActive(fan_state.active);
-    fan_controller.setStaticMode(fan_state.static_mode);
-    fan_controller.setMaxTemperature(fan_state.controlled_temp_max);
-    fan_controller.setMinTemperature(fan_state.controlled_temp_min);
+    if (fan_state.motor_off_brightness) {
+        fan_state.motor_active = ldr_state.precentage <= fan_state.motor_off_brightness_precentage ? false : true;
+        fan_controller.setFanActive(fan_state.motor_active);
+    }
 
     fan_state.speed = fan_controller.getFanSpeed(temperature_state.temperature_c);
     analogWrite(PIN_FAN_INA, fan_state.speed);
@@ -134,6 +205,5 @@ inline void handleFanController() {
 }
 
 inline void handleLCDController() {
-    lcd_controller.setBlacklightOn(lcd_state.backlight);
     lcd_controller.update(temperature_state.temperature_c, fan_controller.getFanSpeedIndicator());
 }

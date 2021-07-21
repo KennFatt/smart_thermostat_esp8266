@@ -24,17 +24,8 @@ class FanController {
     /** Togglable fan. True for active, otherwise off */
     bool _is_fan_active;
 
-    int8_t _min_temperature;
-    int8_t _max_temperature;
-
-    /**
-     * We adjust the fan's speed based on the precentage of the different value
-     * between `_max_temperature` and `_min_temperature`.
-     *
-     * This property is the precentage that we need.
-     * NOTE: Value for this property will be mapped between 25 to 45 (25% to 45%).
-     */
-    uint8_t _range_temperature;
+    int8_t _desired_temperature;
+    int8_t _desired_temperature_threshold;
 
  public:
     /**
@@ -49,10 +40,10 @@ class FanController {
      * makes your board unresponsive (both your sketch and WiFi connections).
      */
     enum FanSpeed : uint16_t {
-        FAN_OFF = 0,
-        FAN_LOW = 512,
+        FAN_OFF    = 0,
+        FAN_LOW    = 512,
         FAN_NORMAL = 768,
-        FAN_HIGH = 1023
+        FAN_HIGH   = 1023
     };
 
     /**
@@ -103,22 +94,17 @@ class FanController {
     /**
      * Set the fan active mode
      *
-     * @param _new_state True to keep the fan active, otherwise will toggle it off
+     * @param is_active True to keep the fan active, otherwise will toggle it off
      */
     void setFanActive(bool is_active);
 
     bool isFanOnStaticMode();
     void setStaticMode(bool static_mode);
 
-    /** Pretty much just a getter methods */
-    int8_t getMinTemperature();
-    int8_t getMaxTemperature();
-    uint8_t getTemperatureRangePrecentage();
-
-    /** And the setters */
-    void setMinTemperature(int8_t min_temp_c);
-    void setMaxTemperature(int8_t max_temp_c);
-    void updateTemperatureRange(uint8_t range_value = 0);
+    int8_t getDesiredTemperature();
+    void setDesiredTemperature(int8_t desired_temp_c);
+    int8_t getDesiredTemperatureThreshold();
+    void setDesiredTemperatureThreshold(int8_t desired_temp_threshold_c = 5);
 
  private:
     /**
@@ -128,7 +114,7 @@ class FanController {
      *
      * @return uint16_t
      */
-    uint16_t measureFanSpeed(int8_t temperature);
+    uint16_t measureFanSpeed(float temperature);
 };
 
 #endif    // KF_FANCONTROLLER_HPP
